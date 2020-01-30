@@ -1,0 +1,67 @@
+<html> 
+<head><meta content="text/html" charset="UTF-8"></head>
+<body> 
+<script type="text/javascript">
+function start(){
+
+  var ctx = new (window.AudioContext||window.webkitAudioContext),
+    initial_delay_sec = 0,
+    scheduled_time = 0;
+
+  function playChunk(audio_src, scheduled_time) {
+    if (audio_src.start) {
+      audio_src.start(scheduled_time);
+    } else {
+      audio_src.noteOn(scheduled_time);
+    }
+  }
+
+  function playAudioStream(audio_f32, sampling_rate) {
+    var audio_buf = ctx.createBuffer(1, audio_f32.length, sampling_rate),
+      audio_src = ctx.createBufferSource(),
+      current_time = ctx.currentTime;
+
+    audio_buf.getChannelData(0).set(audio_f32);
+    audio_src.buffer = audio_buf;
+    audio_src.connect(ctx.destination);
+    if (current_time < scheduled_time) {
+      playChunk(audio_src, scheduled_time);
+      scheduled_time += audio_buf.duration;
+    } else {
+      playChunk(audio_src, current_time);
+      scheduled_time = current_time + audio_buf.duration + initial_delay_sec;
+    }
+  }
+
+  function playUint8AudioStream(uint8array, sampling_rate) {
+    var audio_f32 = Float32Array.from(uint8array, function(uint8){
+      return (uint8-128)/128;
+    });
+    playAudioStream(audio_f32, sampling_rate);
+  }
+
+  fetch('/wav').then((res) => {
+    const total = res.headers.get('content-length');
+
+    let reader = res.body.getReader();
+    let chunk = 0;
+    reader.read().then(function processResult(result) {
+      if (result.done) {
+        log('Fetch complete');
+        return;
+      }
+      if(1<=chunk){
+        playUint8AudioStream(result.value, 44100);
+      }
+      console.log("chunk=", chunk, "len=", result.value.length);
+      chunk++;
+      return reader.read().then(processResult);
+    });
+  });
+}
+</script>
+
+<button onclick="javascript:start();">Start</button>
+
+</body>
+</html>
